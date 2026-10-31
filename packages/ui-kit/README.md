@@ -27,10 +27,9 @@ import { Button, Stack, Text, UI_KIT_VERSION } from '@attricat/ui-kit';
 
 `contract/ui-kit-v1.schema.json` is a verbatim copy of the Attricat core
 repository's `contracts/ui-kit-v1.schema.json` (generated there from
-`scripts/ui-kit/definition.ts`), taken from branch
-`remote-sandboxed-rendering` at commit
-`0e5ea1bf7d2d691492963a6f61030052668c3281` (the file last changed in
-`20a51e218adb888696b89093ecaa38e7ccf2e7b6`). UI kit version 1.0.0.
+`scripts/ui-kit/definition.ts`), taken from `main` at the merge of
+[attricat/attricat#465](https://github.com/attricat/attricat/pull/465)
+(`6e1e056bee8713ab756a0029002ac84f7ca62161`). UI kit version 1.0.0.
 
 `src/generated/` is produced by `scripts/generate.mjs`; do not edit it. After
 replacing the contract run `pnpm generate`. `pnpm test` fails while the
