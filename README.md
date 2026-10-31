@@ -219,23 +219,25 @@ Attricat's extension management page. (Don't name the script `pack`: `pnpm pack`
 is pnpm's own command.) `pack({ root, outDir })` is also exported from
 `@attricat/extension/pack`.
 
-## Use the SDK before it is published
+## Install
 
-```sh
-cd attricat-extension-sdk && pnpm install && pnpm build
-```
-
-Then depend on the packages with `link:` paths:
+The packages are not on npm. Each [GitHub release](https://github.com/attricat/attricat-extension-sdk/releases)
+carries their built tarballs; depend on them directly:
 
 ```json
-"@attricat/extension": "link:../attricat-extension-sdk/packages/extension",
-"@attricat/ui-kit": "link:../attricat-extension-sdk/packages/ui-kit",
+"@attricat/extension": "https://github.com/attricat/attricat-extension-sdk/releases/download/v0.1.1/attricat-extension-0.1.1.tgz",
+"@attricat/ui-kit": "https://github.com/attricat/attricat-extension-sdk/releases/download/v0.1.1/attricat-ui-kit-1.0.0.tgz",
 "preact": "10.29.8"
 ```
 
-`preact` is a peer dependency: install it in the extension. The preset
-deduplicates Preact for builds and tests, and its config types do not depend
-on which copy of Vite resolves.
+`@attricat/ui-kit` and `preact` are peer dependencies of `@attricat/extension`:
+install them in the extension, so it draws with exactly one copy of each. The
+preset deduplicates Preact for builds and tests, and its config types do not
+depend on which copy of Vite resolves.
+
+To work against a local checkout instead, run
+`pnpm install && pnpm build` in it and use `link:` paths such as
+`link:../attricat-extension-sdk/packages/extension`.
 
 ## Work on the SDK
 
