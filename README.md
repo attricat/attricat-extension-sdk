@@ -225,8 +225,8 @@ The packages are not on npm. Each [GitHub release](https://github.com/attricat/a
 carries their built tarballs; depend on them directly:
 
 ```json
-"@attricat/extension": "https://github.com/attricat/attricat-extension-sdk/releases/download/v0.1.1/attricat-extension-0.1.1.tgz",
-"@attricat/ui-kit": "https://github.com/attricat/attricat-extension-sdk/releases/download/v0.1.1/attricat-ui-kit-1.0.0.tgz",
+"@attricat/extension": "https://github.com/attricat/attricat-extension-sdk/releases/download/v0.1.2/attricat-extension-0.1.2.tgz",
+"@attricat/ui-kit": "https://github.com/attricat/attricat-extension-sdk/releases/download/v0.1.2/attricat-ui-kit-1.0.0.tgz",
 "preact": "10.29.8"
 ```
 
@@ -280,3 +280,7 @@ The runtime implements the host side in the core repository's
   well below the host's 1 MiB message limit.
 - Broker methods and payloads match `extensionBroker.ts`; `editor.propose`
   carries `{ value }`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

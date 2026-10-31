@@ -2,6 +2,7 @@
   "name": "@attricat/ui-kit",
   "version": "1.0.0",
   "description": "Preact components and Remote DOM elements of the Attricat UI kit, generated from its contract.",
+  "license": "MIT",
   "type": "module",
   "sideEffects": [
     "./src/generated/elements.ts",
@@ -14,7 +15,8 @@
     "src",
     "contract",
     "scripts",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "exports": {
     ".": {

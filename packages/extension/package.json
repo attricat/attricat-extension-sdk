@@ -1,13 +1,15 @@
 {
   "name": "@attricat/extension",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Write Attricat native UI contributions with Preact: runtime, hooks, Vite preset, packer and test harness.",
+  "license": "MIT",
   "type": "module",
   "files": [
     "dist",
     "src",
     "bin",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "bin": {
     "attricat-pack": "./bin/attricat-pack.js"
