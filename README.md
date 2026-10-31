@@ -281,6 +281,12 @@ The runtime implements the host side in the core repository's
 - Broker methods and payloads match `extensionBroker.ts`; `editor.propose`
   carries `{ value }`.
 
+## Server ABI (WIT)
+
+`wit/` holds every released `attricat:host` ABI as WIT, for server components:
+copy the version your manifest targets into your component and generate
+bindings from it. See [`wit/README.md`](wit/README.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
