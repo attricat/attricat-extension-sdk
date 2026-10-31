@@ -1,0 +1,59 @@
+{
+  "name": "@attricat/ui-kit",
+  "version": "1.0.0",
+  "description": "Preact components and Remote DOM elements of the Attricat UI kit, generated from its contract.",
+  "type": "module",
+  "sideEffects": [
+    "./src/generated/elements.ts",
+    "./dist/generated/elements.js",
+    "./src/index.ts",
+    "./dist/index.js"
+  ],
+  "files": [
+    "dist",
+    "src",
+    "contract",
+    "scripts",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./elements": {
+      "source": "./src/generated/elements.ts",
+      "types": "./dist/generated/elements.d.ts",
+      "default": "./dist/generated/elements.js"
+    },
+    "./contract": "./contract/ui-kit-v1.schema.json",
+    "./package.json": "./package.json",
+    "./version": {
+      "source": "./src/generated/version.ts",
+      "types": "./dist/generated/version.d.ts",
+      "default": "./dist/generated/version.js"
+    }
+  },
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "check-contract": "node scripts/check-contract.mjs",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@remote-dom/core": "1.12.1",
+    "@remote-dom/preact": "1.3.1"
+  },
+  "devDependencies": {
+    "preact": "10.29.8",
+    "vitest": "3.2.7"
+  },
+  "peerDependencies": {
+    "preact": "^10.24.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

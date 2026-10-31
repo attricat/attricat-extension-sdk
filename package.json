@@ -1,0 +1,22 @@
+{
+  "name": "attricat-extension-sdk",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "pnpm -r run build",
+    "generate": "pnpm --filter @attricat/ui-kit run generate",
+    "check-contract": "pnpm --filter @attricat/ui-kit run check-contract",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run check-contract"
+  },
+  "devDependencies": {
+    "@types/node": "24.9.2",
+    "typescript": "6.0.3",
+    "vitest": "3.2.7"
+  }
+}
