@@ -8,11 +8,11 @@ import {
   useEditor,
   useLocale,
   useOutletContext,
-  type BlueprintRevisionContext,
+  type RecordTabContext,
 } from '../src/index.js';
 
 const Summary = () => {
-  const { blueprint_id, blueprint_version } = useOutletContext<BlueprintRevisionContext>();
+  const { record_id } = useOutletContext<RecordTabContext>();
   const locale = useLocale();
   const attricat = useAttricat();
   const [note, setNote] = useState<string>();
@@ -27,7 +27,7 @@ const Summary = () => {
               // A server command of this extension; its answer is yours to define.
               const { note } = await attricat.command<{ note: string }>({
                 command_id: 'load-note',
-                payload: { blueprint_id },
+                payload: { record_id },
               });
               setNote(note);
             }}
@@ -39,13 +39,13 @@ const Summary = () => {
     );
   return (
     <Stack gap="sm">
-      <Text tone="muted">{`Revision ${blueprint_version}`}</Text>
+      <Text tone="muted">{`Record ${record_id}`}</Text>
       <TextField
         label="Note"
         value={note}
         onChange={({ value }) => setNote(value)}
         onSubmit={({ value }) =>
-          attricat.command({ command_id: 'save-note', payload: { blueprint_id, note: value } })
+          attricat.command({ command_id: 'save-note', payload: { record_id, note: value } })
         }
       />
     </Stack>
@@ -74,7 +74,7 @@ import { renderContribution } from '../src/testing.js';
 
 it('saves the note', async () => {
   const view = await renderContribution(Summary, {
-    context: { context_version: 1, blueprint_id: 'b1', blueprint_version: 2 },
+    context: { context_version: 1, record_id: 'r1' },
     broker: { command: ({ command_id }: { command_id: string }) => (command_id === 'load-note' ? { note: 'hello' } : null) },
   });
   await view.fire(view.getByText('Load'), 'press');
@@ -82,7 +82,7 @@ it('saves the note', async () => {
   await view.fire(view.getByLabel('Note'), 'submit', { value: 'new' });
   expect(view.calls.at(-1)).toEqual({
     method: 'command',
-    payload: { command_id: 'save-note', payload: { blueprint_id: 'b1', note: 'new' } },
+    payload: { command_id: 'save-note', payload: { record_id: 'r1', note: 'new' } },
   });
   expect(view.warnings()).toEqual([]);
 });

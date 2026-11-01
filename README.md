@@ -11,7 +11,9 @@ both themes. This SDK covers the extension author's side:
 | Package | What it is |
 | --- | --- |
 | [`@attricat/ui-kit`](packages/ui-kit) (1.0.0) | One Preact component per UI kit element (`Stack`, `Text`, `TextField`, `Button`, `Table`, …), generated from the UI kit contract, plus `UI_KIT_VERSION`. |
-| [`@attricat/extension`](packages/extension) (0.1.0) | `register()`, the hooks, the Worker runtime, the Vite preset (`/vite`), the packer (`attricat-pack`, `/pack`) and the test harness (`/testing`). |
+| [`@attricat/extension`](packages/extension) (0.1.2) | `register()`, the hooks, the Worker runtime, the Vite preset (`/vite`), the packer (`attricat-pack`, `/pack`) and the test harness (`/testing`). |
+
+| [`attricat-extension`](crates/attricat-extension) (Rust) | Typed calls to the host for server components: storage, batches, network, export mappings. |
 
 The Worker, Remote DOM, the DOM polyfill and the message port stay inside the
 SDK; extension code only registers components and uses hooks.
@@ -27,8 +29,8 @@ which UI kit versions the code works with; contributions name the artifact.
     { "id": "ui", "kind": "client_native", "path": "dist/ui.js", "ui_kit": "^1.0" }
   ],
   "ui": [
-    { "id": "summary", "version": 1, "kind": "panel", "artifact": "ui",
-      "outlet": "blueprint_panel", "title": "Summary" },
+    { "id": "summary", "version": 1, "kind": "tab", "artifact": "ui",
+      "outlet": "record_tab", "title": "Summary" },
     { "id": "formula", "version": 1, "kind": "editor", "artifact": "ui",
       "outlet": "attribute_editor", "title": "Formula",
       "editor": { "value_types": ["string"], "props": { "rows": { "type": "integer", "minimum": 1, "maximum": 8 } } } }
@@ -36,7 +38,10 @@ which UI kit versions the code works with; contributions name the artifact.
 }
 ```
 
-Request the capabilities each contribution uses (`client.blueprint_panel`,
+Panels are read-only and cannot call server commands, except `export_mapping`.
+Use a tab, a dialog or an action for anything that does.
+
+Request the capabilities each contribution uses (`client.record_tab`,
 `client.attribute_editor`, `client.commands`, `storage.extension`, …) in
 `permissions`, as for frame contributions.
 
@@ -52,11 +57,11 @@ import {
   useEditor,
   useLocale,
   useOutletContext,
-  type BlueprintRevisionContext,
+  type RecordTabContext,
 } from '@attricat/extension';
 
 const Summary = () => {
-  const { blueprint_id, blueprint_version } = useOutletContext<BlueprintRevisionContext>();
+  const { record_id } = useOutletContext<RecordTabContext>();
   const locale = useLocale();
   const attricat = useAttricat();
   const [note, setNote] = useState<string>();
@@ -71,7 +76,7 @@ const Summary = () => {
               // A server command of this extension; its answer is yours to define.
               const { note } = await attricat.command<{ note: string }>({
                 command_id: 'load-note',
-                payload: { blueprint_id },
+                payload: { record_id },
               });
               setNote(note);
             }}
@@ -83,13 +88,13 @@ const Summary = () => {
     );
   return (
     <Stack gap="sm">
-      <Text tone="muted">{`Revision ${blueprint_version}`}</Text>
+      <Text tone="muted">{`Record ${record_id}`}</Text>
       <TextField
         label="Note"
         value={note}
         onChange={({ value }) => setNote(value)}
         onSubmit={({ value }) =>
-          attricat.command({ command_id: 'save-note', payload: { blueprint_id, note: value } })
+          attricat.command({ command_id: 'save-note', payload: { record_id, note: value } })
         }
       />
     </Stack>
@@ -178,7 +183,7 @@ import { Summary } from './Summary';
 
 it('saves the note', async () => {
   const view = await renderContribution(Summary, {
-    context: { context_version: 1, blueprint_id: 'b1', blueprint_version: 2 },
+    context: { context_version: 1, record_id: 'r1' },
     broker: { command: ({ command_id }: { command_id: string }) => (command_id === 'load-note' ? { note: 'hello' } : null) },
   });
   await view.fire(view.getByText('Load'), 'press');
@@ -186,7 +191,7 @@ it('saves the note', async () => {
   await view.fire(view.getByLabel('Note'), 'submit', { value: 'new' });
   expect(view.calls.at(-1)).toEqual({
     method: 'command',
-    payload: { command_id: 'save-note', payload: { blueprint_id: 'b1', note: 'new' } },
+    payload: { command_id: 'save-note', payload: { record_id: 'r1', note: 'new' } },
   });
   expect(view.warnings()).toEqual([]);
 });
@@ -247,7 +252,11 @@ pnpm build            # tsc to packages/*/dist
 pnpm test             # vitest in both packages
 pnpm typecheck
 pnpm check-contract   # vendored contract vs. the core repository (skips when absent)
+pnpm check-wit        # released WIT vs. the core repository
+cargo test --manifest-path crates/attricat-extension/Cargo.toml
 ```
+
+CI runs all of these against the core repository's `main`.
 
 ### A new UI kit contract
 
@@ -280,6 +289,35 @@ The runtime implements the host side in the core repository's
   well below the host's 1 MiB message limit.
 - Broker methods and payloads match `extensionBroker.ts`; `editor.propose`
   carries `{ value }`.
+
+## Server components
+
+### Typed host calls
+
+`crates/attricat-extension` names the host's `api.call` operations and types
+their JSON. It holds no WIT: your component generates its own bindings, and one
+line connects them.
+
+```toml
+[dependencies]
+attricat-extension = { git = "https://github.com/attricat/attricat-extension-sdk" }
+serde = "1"
+serde_json = "1"
+```
+
+```rust
+wit_bindgen::generate!({ path: "wit", world: "outcome-extension" });
+
+attricat_extension::host!(attricat::host::api);
+
+fn remember(cursor: &str) -> Result<(), String> {
+    storage().set("cursor", &cursor, None).map(drop)
+}
+```
+
+Pin a `rev` in a real extension. Operation runs read and write through their own
+`attricat-data` interface: pass `Batch::to_request()` to `attricat_data::batch`
+and parse the answer with `decode`.
 
 ## Server ABI (WIT)
 
