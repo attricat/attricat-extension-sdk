@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # The contract and WIT checks compare with Attricat core.
+      - uses: actions/checkout@v5
+        with:
+          repository: attricat/attricat
+          path: .attricat-core
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm run check
+        env:
+          ATTRICAT_CORE_DIR: ${{ github.workspace }}/.attricat-core
+
+  rust-helper:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/attricat-extension
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      - run: cargo build --target wasm32-unknown-unknown

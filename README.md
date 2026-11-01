@@ -11,7 +11,9 @@ both themes. This SDK covers the extension author's side:
 | Package | What it is |
 | --- | --- |
 | [`@attricat/ui-kit`](packages/ui-kit) (1.0.0) | One Preact component per UI kit element (`Stack`, `Text`, `TextField`, `Button`, `Table`, …), generated from the UI kit contract, plus `UI_KIT_VERSION`. |
-| [`@attricat/extension`](packages/extension) (0.1.0) | `register()`, the hooks, the Worker runtime, the Vite preset (`/vite`), the packer (`attricat-pack`, `/pack`) and the test harness (`/testing`). |
+| [`@attricat/extension`](packages/extension) (0.1.2) | `register()`, the hooks, the Worker runtime, the Vite preset (`/vite`), the packer (`attricat-pack`, `/pack`) and the test harness (`/testing`). |
+
+| [`attricat-extension`](crates/attricat-extension) (Rust) | Typed calls to the host for server components: storage, batches, network, export mappings. |
 
 The Worker, Remote DOM, the DOM polyfill and the message port stay inside the
 SDK; extension code only registers components and uses hooks.
@@ -247,7 +249,11 @@ pnpm build            # tsc to packages/*/dist
 pnpm test             # vitest in both packages
 pnpm typecheck
 pnpm check-contract   # vendored contract vs. the core repository (skips when absent)
+pnpm check-wit        # released WIT vs. the core repository
+cargo test --manifest-path crates/attricat-extension/Cargo.toml
 ```
+
+CI runs all of these against the core repository's `main`.
 
 ### A new UI kit contract
 
@@ -280,6 +286,35 @@ The runtime implements the host side in the core repository's
   well below the host's 1 MiB message limit.
 - Broker methods and payloads match `extensionBroker.ts`; `editor.propose`
   carries `{ value }`.
+
+## Server components
+
+### Typed host calls
+
+`crates/attricat-extension` names the host's `api.call` operations and types
+their JSON. It holds no WIT: your component generates its own bindings, and one
+line connects them.
+
+```toml
+[dependencies]
+attricat-extension = { git = "https://github.com/attricat/attricat-extension-sdk" }
+serde = "1"
+serde_json = "1"
+```
+
+```rust
+wit_bindgen::generate!({ path: "wit", world: "outcome-extension" });
+
+attricat_extension::host!(attricat::host::api);
+
+fn remember(cursor: &str) -> Result<(), String> {
+    storage().set("cursor", &cursor, None).map(drop)
+}
+```
+
+Pin a `rev` in a real extension. Operation runs read and write through their own
+`attricat-data` interface: pass `Batch::to_request()` to `attricat_data::batch`
+and parse the answer with `decode`.
 
 ## Server ABI (WIT)
 
