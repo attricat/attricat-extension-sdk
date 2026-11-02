@@ -6,7 +6,8 @@
 /** A native attribute editor's context (`attribute_editor`). */
 export type AttributeEditorContext = {
   context_version: 1;
-  record_id: string;
+  /** Null while the field is entered for a record not yet created. */
+  record_id: string | null;
   context_id: string | null;
   /** The field's value as the inline editor holds it, or null when empty. */
   value: string | number | boolean | null;
