@@ -51,7 +51,8 @@ export type Editor<Props = Record<string, unknown>> = {
   required: boolean;
   readOnly: boolean;
   errors: string[];
-  recordId: string;
+  /** Null while the field is entered for a record not yet created. */
+  recordId: string | null;
   contextId: string | null;
   /** Proposes the field's next value; the host validates and saves it. */
   propose(value: string | number | boolean | null): Promise<void>;
