@@ -7,7 +7,8 @@ defines the ABI; a released version never changes, and later versions only add.
 
 Copy the version your manifest's `attricat.host_api` targets into your
 component's `wit/` directory and generate bindings from it, for example with
-`wit_bindgen::generate!({ path: "wit", world: "outcome-extension" })`. A
+`wit_bindgen::generate!({ path: "wit", world: "outcome-extension" })`, or the
+1.2 `webhook-extension` world to also receive inbound webhooks. A
 component must import nothing but `attricat:host` at that version.
 
 `pnpm check-wit` compares these files with a core checkout
