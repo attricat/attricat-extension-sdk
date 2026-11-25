@@ -19,12 +19,18 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
 mod batch;
+pub mod connections;
+pub mod file_links;
 pub mod mappings;
 pub mod network;
+pub mod webhooks;
 
 pub use batch::{Batch, Intent, IntentOutcome, IntentStatus, Scalar};
+pub use connections::{Connection, Connections};
+pub use file_links::{FileLink, FileLinks};
 pub use mappings::Mappings;
 pub use network::{Network, Request, Response};
+pub use webhooks::{Receipt, Received, Webhooks};
 
 /// The host's `api.call`.
 pub trait Host {
@@ -32,8 +38,9 @@ pub trait Host {
 }
 
 /// Connects this crate to your generated bindings, and defines `storage()`,
-/// `mappings()`, `network()`, `configuration()`, `secret()`, `emit_event()`,
-/// `read()` and `connector_scope()` in the calling module.
+/// `mappings()`, `network()`, `connections()`, `file_links()`, `webhooks()`,
+/// `configuration()`, `secret()`, `emit_event()` and `connector_scope()` in
+/// the calling module.
 #[macro_export]
 macro_rules! host {
     ($api:path) => {
@@ -60,6 +67,21 @@ macro_rules! host {
         #[allow(dead_code)]
         fn network() -> $crate::Network<GeneratedHost> {
             $crate::Network(GeneratedHost)
+        }
+
+        #[allow(dead_code)]
+        fn connections() -> $crate::Connections<GeneratedHost> {
+            $crate::Connections(GeneratedHost)
+        }
+
+        #[allow(dead_code)]
+        fn file_links() -> $crate::FileLinks<GeneratedHost> {
+            $crate::FileLinks(GeneratedHost)
+        }
+
+        #[allow(dead_code)]
+        fn webhooks() -> $crate::Webhooks<GeneratedHost> {
+            $crate::Webhooks(GeneratedHost)
         }
 
         #[allow(dead_code)]

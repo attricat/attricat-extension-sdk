@@ -367,11 +367,11 @@ The JSON operations of `api.call`:
 | `attricat.command.v1` | Idempotent batches of up to 100 `create`, `update`, `upsert`, `relationships` and `annotate` intents | `attricat.write` / `attricat.annotations.write` | `Batch` |
 | `events.emit.v1` | Publish one of the manifest's `event_contracts.exports` | `events.emit` | `emit_event()` |
 | `network.request.v2` | Brokered HTTPS through a granted host-permission rule, with typed outcomes, query strings, binary and secret-filled bodies, and a connection's OAuth token | `network.request` | `network()` |
-| `connections.get/list.v1` | A credential connection's non-secret description; the host runs the OAuth grants and refreshes tokens | `connections.use` | — |
-| `mappings.get/list/begin/commit/release/delete.v1` | Per-record export status and external IDs at a destination, with leases against duplicate pushes | `exports.mappings` | `mappings()` (not `list`, `delete`) |
-| `files.link.v1` | A public, expiring link to a record's file, for destinations that fetch media themselves | `attricat.files.public_links` | — |
+| `connections.get/list.v1` | A credential connection's non-secret description; the host runs the OAuth grants and refreshes tokens | `connections.use` | `connections()` |
+| `mappings.get/list/begin/commit/release/delete.v1` | Per-record export status and external IDs at a destination, with leases against duplicate pushes | `exports.mappings` | `mappings()` |
+| `files.link.v1` | A public, expiring link to a record's file, for destinations that fetch media themselves | `attricat.files.public_links` | `file_links()` |
 | `connector.scope.v1` | The connector run's job, blueprint, context, channel, connection and mode | — | `connector_scope()` |
-| `webhooks.receipt.get.v1` | A kept webhook payload, from its `webhook.received.v1` event | `webhooks.receive` | — |
+| `webhooks.receipt.get.v1` | A kept webhook payload, from its `webhook.received.v1` event | `webhooks.receive` | `webhooks()`, `Received::from_event` |
 
 JSON the component sends is bounded to 64 KiB and the host's answers to 1 MiB.
 Deliveries are at-least-once and may be reordered, so make handlers and batches
@@ -427,8 +427,9 @@ serde_json = "1"
 wit-bindgen = "0.63"
 ```
 
-`host!(…)` defines `storage()`, `mappings()`, `network()`, `configuration()`,
-`secret()`, `emit_event()` and `connector_scope()` in the calling module.
+`host!(…)` defines `storage()`, `mappings()`, `network()`, `connections()`,
+`file_links()`, `webhooks()`, `configuration()`, `secret()`, `emit_event()` and
+`connector_scope()` in the calling module.
 `Batch`, `Intent` and `Scalar` build `attricat.command.v1` and
 `attricat-data.batch` requests; `decode` and `encode` handle the JSON of
 everything else. Pin a `rev` in a real extension.
@@ -440,7 +441,7 @@ event handler, where catalog writes are allowed:
 wit_bindgen::generate!({ path: "wit", world: "webhook-extension" });
 
 use attricat::host::outcomes::{Failure, Retry};
-use attricat_extension::{Batch, Intent, Scalar, decode};
+use attricat_extension::{Batch, Intent, Received, Scalar, decode};
 use exports::attricat::host::{event_handler, webhook_receiver};
 use serde::Deserialize;
 use webhook_receiver::{KeptPayload, WebhookOutcome, WebhookReply, WebhookRequest};
@@ -476,34 +477,27 @@ impl event_handler::Guest for Component {
         event: event_handler::Event,
         _delivery: event_handler::Delivery,
     ) -> Result<(), Failure> {
-        if event.event_type != "webhook.received.v1" {
-            return Ok(());
+        let retry = |message| Failure::Retry(Retry { message, after_ms: None });
+        match Received::from_event(&event.event_type, &event.payload).map_err(retry)? {
+            Some(received) => store_order(&received).map_err(retry),
+            None => Ok(()),
         }
-        store_order(&event).map_err(|message| Failure::Retry(Retry { message, after_ms: None }))
     }
 }
 
 #[derive(Deserialize)]
 struct Config { blueprint_id: String, blueprint_version: u64, order_number_attribute_id: String, context_id: String }
 #[derive(Deserialize)]
-struct Received { receipt_id: String }
-#[derive(Deserialize)]
-struct Receipt { payload: String }
-#[derive(Deserialize)]
 struct Order { number: String, total: f64 }
 
-fn store_order(event: &attricat::host::api::Event) -> Result<(), String> {
-    let Received { receipt_id } = decode(&event.payload)?;
-    // Operations the crate doesn't wrap go through `api::call` directly.
-    let receipt: Option<Receipt> = decode(&attricat::host::api::call(
-        "webhooks.receipt.get.v1",
-        &serde_json::json!({ "receipt_id": receipt_id }).to_string(),
-    )?)?;
-    let Some(receipt) = receipt else { return Ok(()) }; // past retention
+fn store_order(received: &Received) -> Result<(), String> {
+    let Some(receipt) = webhooks().receipt(&received.receipt_id)? else {
+        return Ok(()); // past retention
+    };
     let order: Order = decode(&receipt.payload)?;
     let config: Config = configuration()?;
     // Upsert by the sender's order number, so a redelivery changes nothing.
-    let batch = Batch::new(&receipt_id, vec![Intent::upsert(
+    let batch = Batch::new(&receipt.id, vec![Intent::upsert(
         &format!("order-{}", order.number),
         &config.blueprint_id,
         config.blueprint_version,

@@ -117,6 +117,61 @@ impl<H: Host> Mappings<H> {
             )
             .map(drop)
     }
+
+    /// A page of one connection's mappings, optionally in one `status`, in
+    /// record ID order. Pass the page's `next` as `after` to read on.
+    /// `limit` is 1–100 (100 when absent).
+    pub fn list(
+        &self,
+        connection: Option<&str>,
+        status: Option<&str>,
+        after: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<MappingPage, String> {
+        call(
+            &self.0,
+            "mappings.list.v1",
+            json!({
+                "connection": connection,
+                "status": status,
+                "after": after,
+                "limit": limit,
+            }),
+        )
+    }
+
+    /// Forgets a record's mapping. Refused while another worker holds a live
+    /// lease; pass your own `lease_token` to delete under it. Returns whether
+    /// a mapping existed.
+    pub fn delete(
+        &self,
+        connection: Option<&str>,
+        record_id: &str,
+        lease_token: Option<&str>,
+    ) -> Result<bool, String> {
+        #[derive(Deserialize)]
+        struct Deleted {
+            deleted: bool,
+        }
+        let deleted: Deleted = call(
+            &self.0,
+            "mappings.delete.v1",
+            json!({
+                "connection": connection,
+                "record_id": record_id,
+                "lease_token": lease_token,
+            }),
+        )?;
+        Ok(deleted.deleted)
+    }
+}
+
+/// A page of [`Mappings::list`].
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct MappingPage {
+    pub mappings: Vec<Mapping>,
+    /// The record ID to pass as `after`; `None` on the last page.
+    pub next: Option<String>,
 }
 
 #[cfg(test)]
@@ -165,6 +220,40 @@ mod tests {
         assert_eq!(
             host.calls.borrow()[0].1,
             json!({"record_id": "r", "status": "synced", "lease_token": "t"})
+        );
+    }
+
+    #[test]
+    fn list_pages_by_record_id() {
+        let host = FakeHost::answering(&[
+            Ok(r#"{"mappings":[{"record_id":"a","status":"rejected"}],"next":"a"}"#),
+            Ok(r#"{"mappings":[],"next":null}"#),
+        ]);
+        let mappings = Mappings(&host);
+        let page = mappings
+            .list(Some("eu"), Some("rejected"), None, Some(1))
+            .unwrap();
+        assert_eq!(page.mappings[0].status, "rejected");
+        let last = mappings
+            .list(Some("eu"), Some("rejected"), page.next.as_deref(), Some(1))
+            .unwrap();
+        assert_eq!(last.next, None);
+        assert_eq!(
+            host.calls.borrow()[1].1,
+            json!({"connection": "eu", "status": "rejected", "after": "a", "limit": 1})
+        );
+    }
+
+    #[test]
+    fn delete_reports_whether_a_mapping_existed() {
+        let host = FakeHost::answering(&[Ok(r#"{"deleted":true}"#)]);
+        assert!(Mappings(&host).delete(None, "r", Some("t")).unwrap());
+        assert_eq!(
+            host.calls.borrow()[0],
+            (
+                "mappings.delete.v1".to_owned(),
+                json!({"connection": null, "record_id": "r", "lease_token": "t"})
+            )
         );
     }
 }
