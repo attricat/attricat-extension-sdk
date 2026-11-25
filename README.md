@@ -6,14 +6,17 @@ Attricat runs an extension's native UI code in a dedicated Web Worker inside a
 hidden, sandboxed frame with no network access. The code composes elements of
 the **Attricat UI kit**; Attricat validates the tree and draws it with its own
 components, so the extension looks and behaves like the rest of the app in
-both themes. This SDK covers the extension author's side:
+both themes. An extension's event handlers, commands, durable operations,
+connectors and inbound webhooks run on the server as one WebAssembly component
+(see [Server components](#server-components)). This SDK covers the extension
+author's side of both:
 
 | Package | What it is |
 | --- | --- |
 | [`@attricat/ui-kit`](packages/ui-kit) (1.0.0) | One Preact component per UI kit element (`Stack`, `Text`, `TextField`, `Button`, `Table`, …), generated from the UI kit contract, plus `UI_KIT_VERSION`. |
 | [`@attricat/extension`](packages/extension) (0.1.2) | `register()`, the hooks, the Worker runtime, the Vite preset (`/vite`), the packer (`attricat-pack`, `/pack`) and the test harness (`/testing`). |
-
 | [`attricat-extension`](crates/attricat-extension) (Rust) | Typed calls to the host for server components: storage, batches, network, export mappings. |
+| [`wit/`](wit) | Every released `attricat:host` server ABI (1.0.0–1.2.0), to generate a server component's bindings from. |
 
 The Worker, Remote DOM, the DOM polyfill and the message port stay inside the
 SDK; extension code only registers components and uses hooks.
@@ -292,6 +295,124 @@ The runtime implements the host side in the core repository's
 
 ## Server components
 
+An extension's server code is one WebAssembly **component**, declared as a
+`server_wasm` artifact. Attricat runs it on demand, with no WASI: no
+filesystem, sockets, environment or ambient clock. Everything it does goes
+through the `attricat:host` ABI, and the host checks the release's granted
+capabilities on every call. One component can have any of these entry points:
+
+| Entry point | Invoked when | Manifest | Capability |
+| --- | --- | --- | --- |
+| Event handler | A subscribed domain event happens (`record.updated.v1`, `webhook.received.v1`, another extension's declared event, …) | `server.event_handlers` | `events.subscribe` |
+| Command | A client contribution calls `attricat.command(…)`; the request and response are validated against JSON Schemas | `server.commands` | `client.commands` |
+| Operation | A durable, checkpointed run in batches: started by an operator, on a schedule, by a blueprint connector job, or from a host action for selected records | `server.operations` | per call |
+| Webhook | An external system calls the extension's public endpoint | `server.webhooks` | `webhooks.receive` |
+
+### Pick a host ABI and a world
+
+`wit/` holds every released ABI (see [Server ABI (WIT)](#server-abi-wit)).
+Later 1.x versions only add, so set `attricat.host_api` to the oldest
+version whose features you use (`"^1.2"` for webhooks, `"^1.1"` for typed
+outcomes) and generate bindings for one of its worlds. Every world imports the
+whole host; they differ only in what the component exports.
+
+| World | Since | Exports |
+| --- | --- | --- |
+| `webhook-extension` | 1.2 | `event-handler`, `command-handler`, `deferrable-operations`, `webhook-receiver` |
+| `outcome-extension` | 1.1 | `event-handler`, `command-handler`, `deferrable-operations` |
+| `attricat-extension` | 1.0 | `handler` (events and commands), `operations` |
+| `handler-extension`, `operation-extension` | 1.0 | `handler` or `operations` alone |
+
+Prefer a 1.1 or later world for new code. In a 1.0 `handler`, any error
+quarantines the installation. A 1.1 `event-handler` or batch returns a typed
+`failure` instead:
+
+| `failure` | Event handler | Operation batch |
+| --- | --- | --- |
+| `rejected { code, message, record-id?, connection? }` | Recorded, never retried; with a record ID it becomes that record's export status | Settles the named record (with `exports.mappings`), otherwise dead-letters the run |
+| `retry { message, after-ms? }` | Retried with backoff (5 s doubling to 1 h), up to 10 attempts | Retried with the same batch key |
+| `fault(message)` | Quarantines the installation | Fails the run and quarantines |
+
+A handler's `delivery` carries the event's `sequence`, the record's
+`record-revision`, the `attempt` number and its `source-kind` and
+`source-name`. Skip deliveries whose `source-name` is
+`extension:<your-id>` to ignore your own writes. Exports of the world that you
+don't use can return an error.
+
+### What the component can call
+
+| Interface | What it gives you | Where |
+| --- | --- | --- |
+| `api` | Typed `read` (record, direct or resolved values) and `write` (scalar values in an explicit context), scoped configuration, `log`, and `call(operation, json)` for everything below | Everywhere; catalog access only outside operation runs |
+| `clock` (1.1) | UTC wall-clock time, for token expiry and polling | Everywhere |
+| `attricat-data` | `read` and `batch`, with the JSON of `attricat.read.v1` and `attricat.command.v1` | Operation runs |
+| `attricat` | Connector `schema`, `page`, `page-v2` (resolved values, relationships, files, expanded related records), `withdrawn` and `upsert-batch` | Connector runs, scoped by the host to the job's blueprint, context and channel |
+| `selection` | `describe` and `page` over the frozen records an interactive run was started for | Interactive runs |
+| `artifacts` | Read run inputs and write checksummed outputs, or stage outputs batch by batch (`append-output`, `finalize-output`, up to 1 GiB) | Operation runs |
+| `transfer` | Stream HTTPS byte ranges into input artifacts and deliver outputs (PUT/POST, presigned URLs, multipart); `open-record-file` copies a record's file into an input | Operation runs |
+
+Operation runs reach catalog data only through their run-scoped interfaces, so
+an interactive run can never read beyond its selection. `webhook-receiver.receive`
+reaches only configuration, secrets, storage reads, logging and the clock, and
+must answer within 5 seconds.
+
+The JSON operations of `api.call`:
+
+| Operation | Does | Capability | In the crate |
+| --- | --- | --- | --- |
+| `configuration.get.v1` | The installation configuration | `configuration.read` | `configuration()` |
+| `secrets.get.v1` | A workspace secret, for this invocation only | `secrets.read` | `secret()` |
+| `storage.get/set/delete/list.v1` | The extension's key-value store, with revisions for compare-and-set (65,536 keys, 64 KiB a value) | `storage.extension` | `storage()` |
+| `attricat.read.v1` | `page`, `changes`, `lookup` by business key, `movements`, `incoming` relationships | `attricat.read` | `attricat_extension::read(&GeneratedHost, …)` |
+| `attricat.command.v1` | Idempotent batches of up to 100 `create`, `update`, `upsert`, `relationships` and `annotate` intents | `attricat.write` / `attricat.annotations.write` | `Batch` |
+| `events.emit.v1` | Publish one of the manifest's `event_contracts.exports` | `events.emit` | `emit_event()` |
+| `network.request.v2` | Brokered HTTPS through a granted host-permission rule, with typed outcomes, query strings, binary and secret-filled bodies, and a connection's OAuth token | `network.request` | `network()` |
+| `connections.get/list.v1` | A credential connection's non-secret description; the host runs the OAuth grants and refreshes tokens | `connections.use` | — |
+| `mappings.get/list/begin/commit/release/delete.v1` | Per-record export status and external IDs at a destination, with leases against duplicate pushes | `exports.mappings` | `mappings()` (not `list`, `delete`) |
+| `files.link.v1` | A public, expiring link to a record's file, for destinations that fetch media themselves | `attricat.files.public_links` | — |
+| `connector.scope.v1` | The connector run's job, blueprint, context, channel, connection and mode | — | `connector_scope()` |
+| `webhooks.receipt.get.v1` | A kept webhook payload, from its `webhook.received.v1` event | `webhooks.receive` | — |
+
+JSON the component sends is bounded to 64 KiB and the host's answers to 1 MiB.
+Deliveries are at-least-once and may be reordered, so make handlers and batches
+idempotent: keep intent keys and idempotency keys stable across retries. The
+core repository's `docs/extensions.md` is the full contract.
+
+### Declare it
+
+```json
+{
+  "attricat": { "id": "acme.orders", "host_api": "^1.2" },
+  "permissions": ["webhooks.receive", "secrets.read", "events.subscribe",
+                  "configuration.read", "attricat.write"],
+  "artifacts": [{ "id": "server", "kind": "server_wasm", "path": "dist/server.wasm" }],
+  "server": {
+    "webhooks": [
+      { "id": "orders", "title": "Order notifications", "max_body_bytes": 131072 }
+    ],
+    "event_handlers": [
+      { "id": "orders", "event_types": ["webhook.received.v1"], "handler": "handle-event" }
+    ],
+    "commands": [
+      { "id": "load-note", "handler": "load-note",
+        "request_schema": { "type": "object" }, "response_schema": { "type": "object" } }
+    ],
+    "operations": [
+      { "id": "export", "handler": "export", "request_schema": { "type": "object" },
+        "max_checkpoint_bytes": 4096 }
+    ]
+  }
+}
+```
+
+An operation can also declare `interactive: { "version": 1, "max_selection": 50 }`
+to be started from a host action on selected records (or `"scope": "blueprint"`
+for a whole blueprint revision), and a blueprint's YAML can run it as a
+`connector_jobs` entry on an interval or on record changes. `server.connections`
+declares credential connection kinds; `server.exports` declares export
+destinations with preview, resync and reconcile hooks. An event handler can set
+`debounce_ms` to receive only a record's latest event after a burst of edits.
+
 ### Typed host calls
 
 `crates/attricat-extension` names the host's `api.call` operations and types
@@ -301,23 +422,123 @@ line connects them.
 ```toml
 [dependencies]
 attricat-extension = { git = "https://github.com/attricat/attricat-extension-sdk" }
-serde = "1"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+wit-bindgen = "0.63"
 ```
 
+`host!(…)` defines `storage()`, `mappings()`, `network()`, `configuration()`,
+`secret()`, `emit_event()` and `connector_scope()` in the calling module.
+`Batch`, `Intent` and `Scalar` build `attricat.command.v1` and
+`attricat-data.batch` requests; `decode` and `encode` handle the JSON of
+everything else. Pin a `rev` in a real extension.
+
+This component receives signed order webhooks and upserts each order from its
+event handler, where catalog writes are allowed:
+
 ```rust
-wit_bindgen::generate!({ path: "wit", world: "outcome-extension" });
+wit_bindgen::generate!({ path: "wit", world: "webhook-extension" });
+
+use attricat::host::outcomes::{Failure, Retry};
+use attricat_extension::{Batch, Intent, Scalar, decode};
+use exports::attricat::host::{event_handler, webhook_receiver};
+use serde::Deserialize;
+use webhook_receiver::{KeptPayload, WebhookOutcome, WebhookReply, WebhookRequest};
 
 attricat_extension::host!(attricat::host::api);
 
-fn remember(cursor: &str) -> Result<(), String> {
-    storage().set("cursor", &cursor, None).map(drop)
+struct Component;
+export!(Component);
+
+impl webhook_receiver::Guest for Component {
+    // Runs while the sender waits: check, answer, keep. No catalog, no network.
+    fn receive(request: WebhookRequest) -> Result<WebhookOutcome, String> {
+        // One secret per endpoint, so one webhook serves several accounts.
+        let secret = secret(&format!("orders-{}", request.endpoint))?;
+        if !signed(&request, &secret) {
+            return Ok(WebhookOutcome { reply: reply(401), keep: None });
+        }
+        let delivery_id = request.headers.iter()
+            .find(|header| header.name == "x-delivery-id")
+            .map(|header| header.value.clone());
+        Ok(WebhookOutcome {
+            reply: reply(202),
+            keep: Some(KeptPayload {
+                payload: String::from_utf8(request.body).map_err(|e| e.to_string())?,
+                dedupe_key: delivery_id, // a resent delivery is kept once
+            }),
+        })
+    }
 }
+
+impl event_handler::Guest for Component {
+    fn handle_event(
+        event: event_handler::Event,
+        _delivery: event_handler::Delivery,
+    ) -> Result<(), Failure> {
+        if event.event_type != "webhook.received.v1" {
+            return Ok(());
+        }
+        store_order(&event).map_err(|message| Failure::Retry(Retry { message, after_ms: None }))
+    }
+}
+
+#[derive(Deserialize)]
+struct Config { blueprint_id: String, blueprint_version: u64, order_number_attribute_id: String, context_id: String }
+#[derive(Deserialize)]
+struct Received { receipt_id: String }
+#[derive(Deserialize)]
+struct Receipt { payload: String }
+#[derive(Deserialize)]
+struct Order { number: String, total: f64 }
+
+fn store_order(event: &attricat::host::api::Event) -> Result<(), String> {
+    let Received { receipt_id } = decode(&event.payload)?;
+    // Operations the crate doesn't wrap go through `api::call` directly.
+    let receipt: Option<Receipt> = decode(&attricat::host::api::call(
+        "webhooks.receipt.get.v1",
+        &serde_json::json!({ "receipt_id": receipt_id }).to_string(),
+    )?)?;
+    let Some(receipt) = receipt else { return Ok(()) }; // past retention
+    let order: Order = decode(&receipt.payload)?;
+    let config: Config = configuration()?;
+    // Upsert by the sender's order number, so a redelivery changes nothing.
+    let batch = Batch::new(&receipt_id, vec![Intent::upsert(
+        &format!("order-{}", order.number),
+        &config.blueprint_id,
+        config.blueprint_version,
+        &config.order_number_attribute_id,
+        &order.number,
+        &[Scalar::new("total", &config.context_id, order.total)],
+    )]);
+    attricat::host::api::call("attricat.command.v1", &batch.to_request()).map(drop)
+}
+
+fn reply(status: u16) -> WebhookReply {
+    WebhookReply { status, headers: vec![], body: String::new() }
+}
+
+fn signed(_request: &WebhookRequest, _secret: &str) -> bool {
+    todo!("check the sender's signature over request.body, e.g. an HMAC with `secret`")
+}
+
+// `command_handler::Guest` and `deferrable_operations::Guest` are implemented
+// too, returning errors, since the world exports them.
 ```
 
-Pin a `rev` in a real extension. Operation runs read and write through their own
-`attricat-data` interface: pass `Batch::to_request()` to `attricat_data::batch`
-and parse the answer with `decode`.
+Build a `cdylib` crate for `wasm32-unknown-unknown` (not `wasip2`: a component
+may import nothing but `attricat:host`) and wrap the module as a component:
+
+```sh
+cargo build --release --target wasm32-unknown-unknown
+wasm-tools component new target/wasm32-unknown-unknown/release/acme_orders.wasm -o dist/server.wasm
+wasm-tools component wit dist/server.wasm   # imports and exports only attricat:host@1.2.0
+```
+
+Inside
+an operation run, write through `attricat_data::batch(&batch.to_request())`
+instead of `api.call`, with the run's current `batch-key` as the batch key, and
+parse its answer with `decode`.
 
 ## Server ABI (WIT)
 
