@@ -307,6 +307,7 @@ capabilities on every call. One component can have any of these entry points:
 | Command | A client contribution calls `attricat.command(…)`; the request and response are validated against JSON Schemas | `server.commands` | `client.commands` |
 | Operation | A durable, checkpointed run in batches: started by an operator, on a schedule, by a blueprint connector job, or from a host action for selected records | `server.operations` | per call |
 | Webhook | An external system calls the extension's public endpoint | `server.webhooks` | `webhooks.receive` |
+| Form assist | A field it watches changes while someone enters a new record; it proposes values for other fields | A `form_assist` UI contribution naming a command | `client.form_assist`, `client.commands` |
 
 ### Pick a host ABI and a world
 
@@ -533,6 +534,73 @@ Inside
 an operation run, write through `attricat_data::batch(&batch.to_request())`
 instead of `api.call`, with the run's current `batch-key` as the batch key, and
 parse its answer with `decode`.
+
+### Form assists
+
+A form assist proposes values while someone enters a new record, in the record
+form or a new row of a table of linked records, for rules a blueprint cannot
+declare: a customer-specific price, a discount, a unit conversion. It is a UI
+contribution without an artifact that names one of your commands:
+
+```json
+{
+  "permissions": ["client.form_assist", "client.commands", "attricat.read"],
+  "ui": [{
+    "id": "customer_price", "version": 1, "kind": "form_assist", "outlet": "record_form",
+    "when": { "blueprints": ["order_line"] },
+    "form_assist": {
+      "command": "propose-price",
+      "watch": ["item", "quantity", "customer"],
+      "proposes": ["unit_price_net", "discount_percent"]
+    }
+  }]
+}
+```
+
+`watch` and `proposes` list 1 to 16 attribute codes each, and `when.blueprints`
+the blueprints it serves. A blueprint uses it by naming it, which saving checks
+against your enabled release:
+
+```yaml
+form_assists:
+  - { extension_id: acme.pricing, id: customer_price, version: 1 }
+```
+
+When a watched field changes, the host calls the command with only the
+assist's fields. `form_assist::Context` reads that payload and
+`form_assist::Proposals` builds the answer:
+
+```rust
+use attricat_extension::form_assist::{Context, Proposals};
+
+fn propose_price(payload: &str) -> Result<String, String> {
+    let context = Context::from_payload(payload)?;
+    let mut proposals = Proposals::new();
+    let quantity = context.number("quantity").unwrap_or(1.0);
+    if let Some(item) = context.targets("item").first() {
+        // Read the catalog with the extension's own grants (`attricat.read`).
+        let price = contract_price(&item.record_id, context.text("customer"))?;
+        proposals.propose_with_note("unit_price_net", price, "Contract price")?;
+        if quantity >= 100.0 && !context.edited("discount_percent") {
+            proposals.propose("discount_percent", 5)?;
+        }
+    }
+    proposals.to_json()
+}
+```
+
+The context carries `blueprint` (`code`, `id`, `version`), `record_id` (`None`
+for a new record), a concrete `context_id`, `values` with every watched and
+proposed field (`null` when empty; a relationship is a list of `{ record_id,
+blueprint_code }` the person can read) and the proposed fields the person
+has `edited`. Answer with at most 16 proposals and notes of up to 140
+characters of plain text. The host keeps a proposal only for a declared field
+the person has not edited and only when the field accepts the value, and the
+form applies it as an unsaved change with the note under the field. A failed
+command, an answer slower than three seconds, or an answer to values that
+changed meanwhile leaves the form as it is. A blueprint's `default_from` fills
+fields first, and a proposal may replace that value. Only the form calls
+assists: for a rule every write must follow, use an event handler.
 
 ## Server ABI (WIT)
 
