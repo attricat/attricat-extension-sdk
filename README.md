@@ -362,7 +362,7 @@ The JSON operations of `api.call`:
 | Operation | Does | Capability | In the crate |
 | --- | --- | --- | --- |
 | `configuration.get.v1` | The installation configuration | `configuration.read` | `configuration()` |
-| `secrets.get.v1` | A workspace secret, for this invocation only | `secrets.read` | `secret()` |
+| `secrets.get.v1` | One of the extension's own secrets, for this invocation only | `secrets.read` | `secret()` |
 | `storage.get/set/delete/list.v1` | The extension's key-value store, with revisions for compare-and-set (65,536 keys, 64 KiB a value) | `storage.extension` | `storage()` |
 | `attricat.read.v1` | `page`, `changes`, `lookup` by business key, `movements`, `incoming` relationships | `attricat.read` | `attricat_extension::read(&GeneratedHost, …)` |
 | `attricat.command.v1` | Idempotent batches of up to 100 `create`, `update`, `upsert`, `relationships` and `annotate` intents | `attricat.write` / `attricat.annotations.write` | `Batch` |
@@ -413,6 +413,21 @@ for a whole blueprint revision), and a blueprint's YAML can run it as a
 declares credential connection kinds; `server.exports` declares export
 destinations with preview, resync and reconcile hooks. An event handler can set
 `debounce_ms` to receive only a record's latest event after a burst of edits.
+
+Secrets belong to one extension: an administrator sets them on its **Secrets**
+tab, and `secret()` never returns another extension's. Declare the ones to set
+in `server.secrets` (Attricat 1.12 or later; earlier hosts refuse the field), so
+the tab names and describes them and warns while a required one is missing:
+
+```json
+"secrets": [
+  { "name": "orders-api-key", "title": "Orders API key",
+    "description": "Create one under Settings → API.", "required": true }
+]
+```
+
+Names you build at run time, such as the per-endpoint `orders-<endpoint>` keys
+below, need no declaration; the administrator adds them by name.
 
 ### Typed host calls
 

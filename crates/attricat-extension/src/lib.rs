@@ -142,7 +142,8 @@ pub fn configuration<H: Host, T: DeserializeOwned>(host: &H) -> Result<T, String
     call(host, "configuration.get.v1", json!({}))
 }
 
-/// A workspace secret, for this invocation only. Needs `secrets.read`.
+/// One of this extension's secrets, for this invocation only; another
+/// extension's secret of the same name is unavailable. Needs `secrets.read`.
 pub fn secret<H: Host>(host: &H, name: &str) -> Result<String, String> {
     #[derive(Deserialize)]
     struct Secret {
