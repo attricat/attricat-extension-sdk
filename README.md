@@ -14,7 +14,8 @@ author's side of both:
 | Package | What it is |
 | --- | --- |
 | [`@attricat/ui-kit`](packages/ui-kit) (1.0.0) | One Preact component per UI kit element (`Stack`, `Text`, `TextField`, `Button`, `Table`, …), generated from the UI kit contract, plus `UI_KIT_VERSION`. |
-| [`@attricat/extension`](packages/extension) (0.1.2) | `register()`, the hooks, the Worker runtime, the Vite preset (`/vite`), the packer (`attricat-pack`, `/pack`) and the test harness (`/testing`). |
+| [`@attricat/extension`](packages/extension) (0.1.3) | `register()`, the hooks, the Worker runtime, the Vite preset (`/vite`), the packer (`attricat-pack`, `/pack`) and the test harness (`/testing`). |
+| [`@attricat/frame-theme`](packages/frame-theme) (0.1.0) | Design tokens, an MUI theme and light/dark helpers for Frame UI (`client_frame`) contributions. |
 | [`attricat-extension`](crates/attricat-extension) (Rust) | Typed calls to the host for server components: storage, batches, network, export mappings. |
 | [`wit/`](wit) | Every released `attricat:host` server ABI (1.0.0–1.2.0), to generate a server component's bindings from. |
 
@@ -233,8 +234,8 @@ The packages are not on npm. Each [GitHub release](https://github.com/attricat/a
 carries their built tarballs; depend on them directly:
 
 ```json
-"@attricat/extension": "https://github.com/attricat/attricat-extension-sdk/releases/download/v0.1.2/attricat-extension-0.1.2.tgz",
-"@attricat/ui-kit": "https://github.com/attricat/attricat-extension-sdk/releases/download/v0.1.2/attricat-ui-kit-1.0.0.tgz",
+"@attricat/extension": "https://github.com/attricat/attricat-extension-sdk/releases/download/v0.1.3/attricat-extension-0.1.3.tgz",
+"@attricat/ui-kit": "https://github.com/attricat/attricat-extension-sdk/releases/download/v0.1.3/attricat-ui-kit-1.0.0.tgz",
 "preact": "10.29.8"
 ```
 
@@ -242,6 +243,14 @@ carries their built tarballs; depend on them directly:
 install them in the extension, so it draws with exactly one copy of each. The
 preset deduplicates Preact for builds and tests, and its config types do not
 depend on which copy of Vite resolves.
+
+Frame UI contributions (`client_frame`) can use `@attricat/frame-theme` for
+Attricat's tokens, MUI theme and light/dark handling; it needs
+`@mui/material` 6 in the extension:
+
+```json
+"@attricat/frame-theme": "https://github.com/attricat/attricat-extension-sdk/releases/download/v0.1.3/attricat-frame-theme-0.1.0.tgz"
+```
 
 To work against a local checkout instead, run
 `pnpm install && pnpm build` in it and use `link:` paths such as
