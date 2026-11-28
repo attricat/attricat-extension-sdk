@@ -17,7 +17,7 @@ author's side of both:
 | [`@attricat/extension`](packages/extension) (0.1.3) | `register()`, the hooks, the Worker runtime, the Vite preset (`/vite`), the packer (`attricat-pack`, `/pack`) and the test harness (`/testing`). |
 | [`@attricat/frame-theme`](packages/frame-theme) (0.1.0) | Design tokens, an MUI theme and light/dark helpers for Frame UI (`client_frame`) contributions. |
 | [`attricat-extension`](crates/attricat-extension) (Rust) | Typed calls to the host for server components: storage, batches, network, export mappings. |
-| [`wit/`](wit) | Every released `attricat:host` server ABI (1.0.0–1.2.0), to generate a server component's bindings from. |
+| [`wit/`](wit) | Every released `attricat:host` server ABI (1.0.0–1.3.0), to generate a server component's bindings from. |
 
 The Worker, Remote DOM, the DOM polyfill and the message port stay inside the
 SDK; extension code only registers components and uses hooks.
@@ -329,6 +329,7 @@ whole host; they differ only in what the component exports.
 | World | Since | Exports |
 | --- | --- | --- |
 | `webhook-extension` | 1.2 | `event-handler`, `command-handler`, `deferrable-operations`, `webhook-receiver` |
+| `command-extension` | 1.3 | `event-handler`, `commands`, `deferrable-operations`, `webhook-receiver`; `commands` can refuse with `rejected { code, message }`, which the host shows the person, and receives their `locale` |
 | `outcome-extension` | 1.1 | `event-handler`, `command-handler`, `deferrable-operations` |
 | `attricat-extension` | 1.0 | `handler` (events and commands), `operations` |
 | `handler-extension`, `operation-extension` | 1.0 | `handler` or `operations` alone |
