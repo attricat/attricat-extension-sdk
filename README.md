@@ -328,8 +328,8 @@ whole host; they differ only in what the component exports.
 
 | World | Since | Exports |
 | --- | --- | --- |
-| `webhook-extension` | 1.2 | `event-handler`, `command-handler`, `deferrable-operations`, `webhook-receiver` |
 | `command-extension` | 1.3 | `event-handler`, `commands`, `deferrable-operations`, `webhook-receiver`; `commands` can refuse with `rejected { code, message }`, which the host shows the person, and receives their `locale` |
+| `webhook-extension` | 1.2 | `event-handler`, `command-handler`, `deferrable-operations`, `webhook-receiver` |
 | `outcome-extension` | 1.1 | `event-handler`, `command-handler`, `deferrable-operations` |
 | `attricat-extension` | 1.0 | `handler` (events and commands), `operations` |
 | `handler-extension`, `operation-extension` | 1.0 | `handler` or `operations` alone |
